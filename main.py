@@ -940,6 +940,7 @@ def background_buy_loop(chat_id, user_id, operator, msg_id, service, country):
     users_db[user_id].setdefault('active_threads', {})
     thread_token = str(uuid.uuid4())
     users_db[user_id]['active_threads'][msg_id] = thread_token
+    last_search_ui_update = 0
 
     headers = {'Authorization': 'Bearer ' + api_key, 'Accept': 'application/json'}
 
@@ -961,8 +962,8 @@ def background_buy_loop(chat_id, user_id, operator, msg_id, service, country):
         num_type_map = {'fresh': 'Only Fresh', 'opened': 'Only Opened', 'all': 'Fresh & Opened'}
         display_num_type = num_type_map.get(num_type, 'Only Fresh')
 
-        # UI UPDATE (Optimization: Update UI only every 5th attempt to prevent 429)
-        if attempt == 1 or attempt % 5 == 0:
+        # UI UPDATE: throttle hard so Telegram edit rate limit does not trigger
+        if attempt == 1 or time.time() - last_search_ui_update >= 4:
             markup = InlineKeyboardMarkup()
             markup.add(InlineKeyboardButton("🛑 Stop Search", callback_data=f"stopsearch_{operator}"))
             text = (f"⏳ *Searching for clean number...*\n\n"
@@ -974,23 +975,15 @@ def background_buy_loop(chat_id, user_id, operator, msg_id, service, country):
             
             try:
                 bot.edit_message_text(text, chat_id, msg_id, reply_markup=markup, parse_mode="Markdown")
-                time.sleep(0.7) # Anti-flood
+                last_search_ui_update = time.time()
             except telebot.apihelper.ApiTelegramException as e:
                 if "Too Many Requests" in str(e):
-                    # Smart 429 handling: extract retry_after
-                    retry_after = 5
-                    try:
-                        import re
-                        retry_match = re.search(r"retry after (\d+)", str(e))
-                        if retry_match: retry_after = int(retry_match.group(1)) + 1
-                    except: pass
-                    print(f"Rate limited. Waiting {retry_after} seconds...")
-                    time.sleep(retry_after)
+                    print("Rate limited on message edit. Skipping UI refresh temporarily...")
+                    last_search_ui_update = time.time() + 8
                 else: pass
             except: pass
         else:
-            # Even if we don't update UI, sleep a bit to respect 5sim and Telegram
-            time.sleep(0.3)
+            time.sleep(0.15)
 
         try:
             buy_url = f"https://5sim.net/v1/user/buy/activation/{country}/{operator}/{service}"
@@ -1070,6 +1063,8 @@ def background_buy_loop(chat_id, user_id, operator, msg_id, service, country):
                     # --- AUTOMATIC OTP POLLING (10 minutes) ---
                     start_poll = time.time()
                     received_sms_texts = set()
+                    last_probe_ui_update = 0
+                    last_probe_text = ""
                     
                     while time.time() - start_poll < 600:
                         try:
@@ -1186,15 +1181,19 @@ def background_buy_loop(chat_id, user_id, operator, msg_id, service, country):
                                                          f"{'✅ SMS Received!' if otp_val != 'Waiting...' else '⏳ Waiting for SMS...'}")
                                         
                                         elapsed = int(time.time() - start_poll)
-                                        bot.edit_message_text(
-                                            f"{temp_wait_text}\n\n🕵️ *Probing for SMS...* ({elapsed}s)",
-                                            chat_id, msg_id, reply_markup=sms_markup, parse_mode="Markdown"
-                                        )
+                                        probe_text = f"{temp_wait_text}\n\n🕵️ *Probing for SMS...* ({elapsed}s)"
+                                        if probe_text != last_probe_text and time.time() - last_probe_ui_update >= 3:
+                                            bot.edit_message_text(
+                                                probe_text,
+                                                chat_id, msg_id, reply_markup=sms_markup, parse_mode="Markdown"
+                                            )
+                                            last_probe_text = probe_text
+                                            last_probe_ui_update = time.time()
                                     except: pass
 
-                            time.sleep(1)
+                            time.sleep(0.35)
                         except:
-                            time.sleep(1)
+                            time.sleep(0.35)
                     return
 
                 else:
