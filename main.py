@@ -1,4 +1,4 @@
-﻿import telebot
+import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 import requests
 import threading
@@ -305,9 +305,14 @@ def init_user(user_id):
             'state': 'MAIN_MENU', 'api_key': '', 'logged_in': False,
             'favorites': [], 'fav_countries': [], 'operator_defaults': {}, 'temp_data': {}, 'stop_search': False,
             'prefixes': {}, 'stopped_searches': set(), 'cancelled_orders': set(), 'orders_with_otp': set(), 'active_threads': {},
-            'purchase_context': {}, 'number_type': 'fresh', 'checker_bot': '@TelCheckers_bot'
+            'purchase_context': {}, 'number_type': 'fresh', 'checker_bot': '@TelCheckers_bot',
+            'stats': {'otp_dates': {}, 'total_otps': 0}
         }
         save_db(db_data)
+    else:
+        users_db[user_id].setdefault('stats', {'otp_dates': {}, 'total_otps': 0})
+        users_db[user_id]['stats'].setdefault('otp_dates', {})
+        users_db[user_id]['stats'].setdefault('total_otps', 0)
     return users_db[user_id]
 
 # --- ACCESS CONTROL DECORATOR ---
@@ -426,10 +431,12 @@ def cmd_remove_checker(message):
 @access_required
 def show_accounts_stats(message):
     import datetime
+    user_id = message.from_user.id
+    init_user(user_id)
     today = datetime.date.today()
     yesterday = today - datetime.timedelta(days=1)
     
-    stats = db_data.get("stats", {})
+    stats = users_db[user_id].get("stats", {})
     otp_dates = stats.get("otp_dates", {})
     
     today_count = otp_dates.get(today.isoformat(), 0)
@@ -1088,6 +1095,10 @@ def background_buy_loop(chat_id, user_id, operator, msg_id, service, country):
                                             users_db[user_id].setdefault('orders_with_otp', set()).add(str(order_id))
                                             import datetime
                                             today_str = datetime.date.today().isoformat()
+                                            users_db[user_id].setdefault('stats', {'otp_dates': {}, 'total_otps': 0})
+                                            users_db[user_id]['stats'].setdefault('otp_dates', {})
+                                            users_db[user_id]['stats']['otp_dates'][today_str] = users_db[user_id]['stats']['otp_dates'].get(today_str, 0) + 1
+                                            users_db[user_id]['stats']['total_otps'] = users_db[user_id]['stats'].get('total_otps', 0) + 1
                                             db_data["stats"].setdefault("otp_dates", {})
                                             db_data["stats"]["otp_dates"][today_str] = db_data["stats"]["otp_dates"].get(today_str, 0) + 1
                                             db_data["stats"]["total_otps"] = db_data["stats"].get("total_otps", 0) + 1
@@ -1414,4 +1425,3 @@ if __name__ == '__main__':
     print("Bot is successfully running!")
     bot.delete_webhook(drop_pending_updates=True)
     bot.infinity_polling()
-
