@@ -963,7 +963,7 @@ def background_buy_loop(chat_id, user_id, operator, msg_id, service, country):
         display_num_type = num_type_map.get(num_type, 'Only Fresh')
 
         # UI UPDATE: throttle hard so Telegram edit rate limit does not trigger
-        if attempt == 1 or time.time() - last_search_ui_update >= 4:
+        if attempt == 1 or time.time() - last_search_ui_update >= 6:
             markup = InlineKeyboardMarkup()
             markup.add(InlineKeyboardButton("🛑 Stop Search", callback_data=f"stopsearch_{operator}"))
             text = (f"⏳ *Searching for clean number...*\n\n"
@@ -978,8 +978,7 @@ def background_buy_loop(chat_id, user_id, operator, msg_id, service, country):
                 last_search_ui_update = time.time()
             except telebot.apihelper.ApiTelegramException as e:
                 if "Too Many Requests" in str(e):
-                    print("Rate limited on message edit. Skipping UI refresh temporarily...")
-                    last_search_ui_update = time.time() + 8
+                    last_search_ui_update = time.time() + 15
                 else: pass
             except: pass
         else:
@@ -1182,7 +1181,7 @@ def background_buy_loop(chat_id, user_id, operator, msg_id, service, country):
                                         
                                         elapsed = int(time.time() - start_poll)
                                         probe_text = f"{temp_wait_text}\n\n🕵️ *Probing for SMS...* ({elapsed}s)"
-                                        if probe_text != last_probe_text and time.time() - last_probe_ui_update >= 3:
+                                        if probe_text != last_probe_text and time.time() - last_probe_ui_update >= 8:
                                             bot.edit_message_text(
                                                 probe_text,
                                                 chat_id, msg_id, reply_markup=sms_markup, parse_mode="Markdown"
