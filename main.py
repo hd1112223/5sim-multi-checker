@@ -1,4 +1,4 @@
-import telebot
+import telebo
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 import requests
 import threading
